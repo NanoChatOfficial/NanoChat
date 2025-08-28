@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NanoChat</title>
+  <link rel="stylesheet" href="/static/styles.css"/>
+  <script src="/static/purify.min.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>NanoChat</h1>
+    <p class="subheading">End-to-end encrypted chat</p>
+    <p class="subheading"></p><a id="view-source" href="https://github.com/umutcamliyurt/NanoChat" target="_blank" rel="noopener noreferrer">Source</a></p>
+  </header>
+
+  <main>
+    <section id="chat-window" aria-label="Chat window">
+      <section id="messages" role="log" aria-live="polite"></section>
+    </section>
+  </main>
+
+  <section id="message-box" aria-label="Message composer">
+    <div class="input-row">
+      <input type="hidden" id="user" aria-label="Nickname" />
+      <textarea
+        id="content"
+        placeholder="Type a message..."
+        aria-label="Message"
+      ></textarea>
+    </div>
+  </section>
+
+  <script src="/static/main.js" defer></script>
+</body>
+</html>
