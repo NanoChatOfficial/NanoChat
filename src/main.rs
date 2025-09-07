@@ -9,7 +9,7 @@ use rocket::http::Status;
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket::State;
 use std::fs::{self, OpenOptions};
-use std::io::{BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, Duration};
 use chrono::{DateTime, Utc};
@@ -43,6 +43,9 @@ struct NewMessage {
     iv: String,
 }
 
+const AES_GCM_IV_BYTES: usize = 12;
+const AES_GCM_TAG_BYTES: usize = 16;
+
 fn room_path(room: &str) -> PathBuf {
     Path::new("messages").join(room)
 }
@@ -51,16 +54,45 @@ fn message_path(room: &str, id: usize) -> PathBuf {
     room_path(room).join(format!("{}.json", id))
 }
 
+fn is_hex(s: &str) -> bool {
+    s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn valid_hex_len(hex: &str, min_bytes: usize, exact_bytes: Option<usize>) -> bool {
+    if !is_hex(hex) { return false; }
+    if hex.len() % 2 != 0 { return false; }
+    let bytes = hex.len() / 2;
+    if bytes < min_bytes { return false; }
+    if let Some(e) = exact_bytes {
+        if bytes != e { return false; }
+    }
+    true
+}
+
 fn save_message_to_file(message: &Message) -> std::io::Result<()> {
+    if message.room.len() != 16 || !message.room.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid room"));
+    }
+
     let dir = room_path(&message.room);
     fs::create_dir_all(&dir)?;
+
+    let final_path = message_path(&message.room, message.id);
+    let tmp_path = final_path.with_extension("json.tmp");
+
     let file = OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
-        .open(message_path(&message.room, message.id))?;
-    let mut w = BufWriter::new(file);
-    serde_json::to_writer(&mut w, message)?;
+        .open(&tmp_path)?;
+
+    {
+        let mut w = BufWriter::new(file);
+        serde_json::to_writer(&mut w, message)?;
+        w.flush()?;
+    }
+
+    fs::rename(&tmp_path, &final_path)?;
     Ok(())
 }
 
@@ -101,18 +133,38 @@ fn load_messages(room: &str) -> Vec<Message> {
     }
 
     let mut messages = Vec::new();
-    if let Ok(entries) = fs::read_dir(dir) {
+    if let Ok(entries) = fs::read_dir(&dir) {
         for entry in entries.flatten() {
-            if let Ok(file) = OpenOptions::new().read(true).open(entry.path()) {
-                let reader = BufReader::new(file);
-                if let Ok(message) = serde_json::from_reader(reader) {
-                    messages.push(message);
+            let p = entry.path();
+            if !p.is_file() { continue; }
+
+            if let Some(ext) = p.extension() {
+                if ext != "json" { continue; }
+            }
+
+            match OpenOptions::new().read(true).open(&p) {
+                Ok(file) => {
+                    let reader = BufReader::new(file);
+                    match serde_json::from_reader::<_, Message>(reader) {
+                        Ok(message) => {
+                            if message.room.eq_ignore_ascii_case(room) {
+                                messages.push(message);
+                            } else {
+                                eprintln!(
+                                    "load_messages: skipping file with mismatched room {:?} => {}",
+                                    p, message.room
+                                );
+                            }
+                        }
+                        Err(e) => eprintln!("load_messages: failed to parse {:?}: {}", p, e),
+                    }
                 }
+                Err(e) => eprintln!("load_messages: failed to open {:?}: {}", p, e),
             }
         }
     }
 
-    messages.sort_unstable_by_key(|p: &Message| p.id);
+    messages.sort_unstable_by_key(|p| p.id);
     messages
 }
 
@@ -141,15 +193,10 @@ fn utc_now_iso() -> String {
 
 #[derive(FromForm)]
 struct MsgQuery {
-
     sort: Option<String>,
-
     order: Option<String>,
-
     since_id: Option<usize>,
-
     since_ts: Option<String>,
-
     limit: Option<usize>,
 }
 
@@ -157,7 +204,6 @@ const MAX_LIMIT: usize = 1000;
 
 fn apply_query(mut messages: Vec<Message>, params: Option<MsgQuery>) -> Vec<Message> {
     if let Some(q) = params {
-
         if let Some(since_id) = q.since_id {
             messages.retain(|m| m.id > since_id);
         }
@@ -188,7 +234,6 @@ fn apply_query(mut messages: Vec<Message>, params: Option<MsgQuery>) -> Vec<Mess
                 if asc { ord } else { ord.reverse() }
             });
         } else {
-
             if asc {
                 messages.sort_unstable_by_key(|m| m.id);
             } else {
@@ -201,7 +246,6 @@ fn apply_query(mut messages: Vec<Message>, params: Option<MsgQuery>) -> Vec<Mess
             messages.truncate(limit);
         }
     } else {
-
         messages.sort_unstable_by_key(|m| m.id);
         if messages.len() > MAX_LIMIT {
             messages.truncate(MAX_LIMIT);
@@ -212,10 +256,23 @@ fn apply_query(mut messages: Vec<Message>, params: Option<MsgQuery>) -> Vec<Mess
 }
 
 #[get("/messages/<room>?<params..>")]
-fn get_messages(room: &str, params: Option<MsgQuery>) -> Json<Vec<Message>> {
-    let messages = load_messages(room);
+fn get_messages(room: &str, params: Option<MsgQuery>) -> Result<Json<Vec<Message>>, Status> {
+    if room.len() != 16 || !room.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(Status::BadRequest);
+    }
+
+    let dir = room_path(room);
+    if !dir.exists() {
+        return Err(Status::NotFound);
+    }
+
+    let messages: Vec<Message> = load_messages(room)
+        .into_iter()
+        .filter(|m| m.room.eq_ignore_ascii_case(room))
+        .collect();
+
     let selected = apply_query(messages, params);
-    Json(selected)
+    Ok(Json(selected))
 }
 
 #[get("/messages", rank = 2)]
@@ -278,8 +335,20 @@ fn create_message(
         return Err(Status::PayloadTooLarge);
     }
 
-    let id = next_id(room);
+    if !valid_hex_len(&new_message.user_iv, AES_GCM_IV_BYTES, Some(AES_GCM_IV_BYTES)) {
+        return Err(Status::BadRequest);
+    }
+    if !valid_hex_len(&new_message.iv, AES_GCM_IV_BYTES, Some(AES_GCM_IV_BYTES)) {
+        return Err(Status::BadRequest);
+    }
+    if !valid_hex_len(&new_message.content, AES_GCM_TAG_BYTES, None) {
+        return Err(Status::BadRequest);
+    }
+    if !valid_hex_len(&new_message.user, AES_GCM_TAG_BYTES, None) {
+        return Err(Status::BadRequest);
+    }
 
+    let id = next_id(room);
     let timestamp = utc_now_iso();
 
     let message = Message {

@@ -161,7 +161,6 @@ async function decryptText(cipherHex, ivHex, key) {
     return new TextDecoder().decode(plain);
   } catch (e) {
     if (e instanceof DOMException) {
-      console.warn('decryptText: AES-GCM authentication failed (DOMException). Likely wrong key/iv/ciphertext tampering.', e);
     } else {
       console.warn('decryptText error:', e);
     }
@@ -327,64 +326,78 @@ function showNotification(message) {
 
 async function fetchMessages() {
   try {
-    if (!ROOM) return;
+    if (!ROOM || typeof ROOM !== 'string' || !/^[0-9a-f]{16}$/i.test(ROOM)) {
+      console.warn('fetchMessages: invalid ROOM, skipping fetch ->', ROOM);
+      return;
+    }
+
     if (!KEY) {
       KEY = await getKeyFromUrl();
-      if (!KEY) return;
+      if (!KEY) {
+        console.warn('fetchMessages: no KEY available, skipping fetch');
+        return;
+      }
     }
 
     const limit = 200;
-    let url = `/api/messages/${encodeURIComponent(ROOM)}?order=asc&limit=${limit}`;
-    if (LAST_SEEN_ID && LAST_SEEN_ID > 0) {
-      url = `/api/messages/${encodeURIComponent(ROOM)}?since_id=${LAST_SEEN_ID}&order=asc&limit=${limit}`;
-    }
+
+    const sinceId = (typeof LAST_SEEN_ID === 'number' && LAST_SEEN_ID > 0) ? LAST_SEEN_ID : 0;
+    const url = `/api/messages/${encodeURIComponent(ROOM)}?since_id=${sinceId}&order=asc&limit=${limit}`;
 
     const res = await fetch(url);
     if (!res.ok) {
       console.warn('fetchMessages: server returned', res.status);
       return;
     }
-    const messages = await res.json();
+
+    const payload = await res.json();
+    if (!Array.isArray(payload)) {
+      console.error('fetchMessages: server returned non-array payload', payload);
+      return;
+    }
+
+    const serverMessages = payload.filter(m => {
+      if (!m.room || m.room.toLowerCase() !== ROOM.toLowerCase()) return false;
+      if (!m.iv || !m.user_iv || !m.content || !m.user) return false;
+      if (m.iv.length !== 24 || m.user_iv.length !== 24) return false;
+      if (m.content.length < 32 || m.user.length < 32) return false;
+      return true;
+    });
+
+    if (!serverMessages.length) return;
 
     const messagesDiv = document.getElementById('messages');
     if (!messagesDiv) return;
 
     messagesDiv.style.overflowAnchor = 'none';
-
     const userWasNearBottom = isUserNearBottom(messagesDiv, 50);
 
     const existingMap = new Map();
     Array.from(messagesDiv.children).forEach(el => {
-      if (el.dataset.serverId) {
-        existingMap.set(`s:${el.dataset.serverId}`, el);
-      }
-      if (el.dataset.id) {
-        existingMap.set(`id:${el.dataset.id}`, el);
-      }
-      if (el.dataset.fingerprint) {
-        existingMap.set(`fp:${el.dataset.fingerprint}`, el);
-      }
+      if (el.dataset.serverId) existingMap.set(`s:${el.dataset.serverId}`, el);
+      if (el.dataset.id) existingMap.set(`id:${el.dataset.id}`, el);
+      if (el.dataset.fingerprint) existingMap.set(`fp:${el.dataset.fingerprint}`, el);
     });
 
     const decrypted = [];
-    for (const message of messages) {
+    for (const message of serverMessages) {
       try {
         const user = await decryptText(message.user, message.user_iv, KEY);
         const content = await decryptText(message.content, message.iv, KEY);
 
         if (!message.timestamp) {
-          console.warn("Message missing timestamp, skipping:", message);
           LAST_SEEN_ID = Math.max(LAST_SEEN_ID, Number(message.id));
           continue;
         }
 
         decrypted.push({ serverId: message.id, user, content, timestamp: message.timestamp });
         LAST_SEEN_ID = Math.max(LAST_SEEN_ID, Number(message.id));
-      } catch (e) {
-        console.warn('Skipping message (decrypt/error) serverId=' + String(message.id) + ':', e);
+      } catch (_) {
         LAST_SEEN_ID = Math.max(LAST_SEEN_ID, Number(message.id));
       }
     }
+
+    if (!decrypted.length) return;
 
     const frag = document.createDocumentFragment();
     const prevScrollTop = messagesDiv.scrollTop;
@@ -397,62 +410,33 @@ async function fetchMessages() {
       const fingerprint = getMessageFingerprint({ user: m.user, content: m.content });
       const fpKey = `fp:${fingerprint}`;
 
-      if (existingMap.has(serverKey)) {
-        const existingEl = existingMap.get(serverKey);
-        updateExistingMessageElement(existingEl, { user: m.user, content: m.content, timestamp: m.timestamp });
-        existingEl.dataset.id = plaintextId;
-        existingEl.dataset.fingerprint = fingerprint;
-        continue;
-      }
-
-      if (existingMap.has(fpKey)) {
-        const existingEl = existingMap.get(fpKey);
+      let existingEl = existingMap.get(serverKey) || existingMap.get(fpKey) || existingMap.get(idKey);
+      if (existingEl) {
         updateExistingMessageElement(existingEl, { user: m.user, content: m.content, timestamp: m.timestamp });
         existingEl.dataset.serverId = String(m.serverId);
         existingEl.dataset.id = plaintextId;
         existingEl.dataset.fingerprint = fingerprint;
-        continue;
-      }
+      } else {
+        const elem = createMessageElement({ user: m.user, content: m.content, timestamp: m.timestamp });
+        elem.dataset.serverId = String(m.serverId);
+        elem.dataset.id = plaintextId;
+        elem.dataset.fingerprint = fingerprint;
+        frag.appendChild(elem);
 
-      if (existingMap.has(idKey)) {
-        const existingEl = existingMap.get(idKey);
-        updateExistingMessageElement(existingEl, { user: m.user, content: m.content, timestamp: m.timestamp });
-        existingEl.dataset.serverId = String(m.serverId);
-        existingEl.dataset.fingerprint = fingerprint;
-        continue;
-      }
-
-      const elem = createMessageElement({ user: m.user, content: m.content, timestamp: m.timestamp });
-      elem.dataset.serverId = String(m.serverId);
-      elem.dataset.id = plaintextId;
-      elem.dataset.fingerprint = fingerprint;
-      frag.appendChild(elem);
-
-      if (!notifiedIds.has(elem.dataset.id)) {
-        if (Notification.permission === "granted") {
-          console.debug("🔔 Showing notification for", elem.dataset.id);
+        if (!notifiedIds.has(elem.dataset.id) && Notification.permission === 'granted') {
           showNotification(m);
+          notifiedIds.add(elem.dataset.id);
         }
-        notifiedIds.add(elem.dataset.id);
       }
     }
 
-    if (frag.childNodes.length) {
-      messagesDiv.appendChild(frag);
-
-      scrollMessagesToBottom(messagesDiv, false);
-    }
+    if (frag.childNodes.length) messagesDiv.appendChild(frag);
 
     const newScrollHeight = messagesDiv.scrollHeight;
     const dh = newScrollHeight - prevScrollHeight;
-
-    if (userWasNearBottom) {
-      messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    } else {
-      messagesDiv.scrollTop = prevScrollTop + dh;
-    }
-
+    messagesDiv.scrollTop = userWasNearBottom ? messagesDiv.scrollHeight : prevScrollTop + dh;
     messagesDiv._lastKnownScrollHeight = messagesDiv.scrollHeight;
+
   } catch (e) {
     console.error('fetchMessages error', e);
   }
