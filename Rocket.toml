@@ -1,8 +1,0 @@
-[default]
-address = "127.0.0.1"
-port = 8000
-
-[default.limits]
-forms = "4 KiB"
-json = "4 KiB"
-file = "4 KiB"

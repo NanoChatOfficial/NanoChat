@@ -7,11 +7,9 @@
 
 - Small codebase
 
-- Messages expire after 7 days
+- Messages expire after 30 days
 
 - Docker support
-
-- Written in Rust
 
 ## Technical details:
 
@@ -23,12 +21,11 @@
 ## Server setup:
 
     sudo apt update
-    sudo apt install curl build-essential git
-    curl https://sh.rustup.rs -sSf | sh -s -- -y
+    sudo apt install git python3 python3-pip
     git clone https://github.com/umutcamliyurt/NanoChat.git
-    cd NanoChat/
-    cargo build --release
-    cargo run --release
+    cd NanoChat/backend/
+    pip3 install -r requirements.txt
+    python manage.py runserver
 
 ## Server setup with Docker:
 
@@ -39,7 +36,7 @@
 
 ## Requirements:
 
-- [Rust](https://www.rust-lang.org), [Tor](https://gitlab.torproject.org/tpo/core/tor)
+- [Python](https://www.python.org/downloads/), [Tor](https://gitlab.torproject.org/tpo/core/tor)
 
 <!-- SCREENSHOT -->
 ## Screenshot:

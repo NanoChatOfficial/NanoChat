@@ -339,7 +339,7 @@ async function fetchMessages() {
       }
     }
 
-    const limit = 200;
+    const limit = 1000;
 
     const sinceId = (typeof LAST_SEEN_ID === 'number' && LAST_SEEN_ID > 0) ? LAST_SEEN_ID : 0;
     const url = `/api/messages/${encodeURIComponent(ROOM)}?since_id=${sinceId}&order=asc&limit=${limit}`;
