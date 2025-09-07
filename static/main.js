@@ -1,16 +1,47 @@
-function bufferToHex(buffer) {
-  const bytes = new Uint8Array(buffer);
-  return Array.from(bytes)
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+function scrollMessagesToBottom(container, smooth = false) {
+  if (!container) return;
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      try {
+        if (typeof container.scrollTo === 'function') {
+          container.scrollTo({ top: container.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+        } else {
+          container.scrollTop = container.scrollHeight;
+        }
+      } catch (e) {
+
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+  });
 }
+
+function bufferToHex(buffer) {
+  const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  return Array.from(u8).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function hexToBuffer(hex) {
   if (typeof hex !== 'string') throw new TypeError('hex must be a string');
-  const cleaned = hex.trim();
+
+  let cleaned;
+  try {
+    cleaned = hex.trim().replace(/^0x/i, '');
+  } catch (e) {
+    throw new TypeError('hex must be a string');
+  }
   if (cleaned.length === 0) return new ArrayBuffer(0);
   if (cleaned.length % 2 !== 0) throw new Error('hex string length must be even');
   if (!/^[0-9a-fA-F]*$/.test(cleaned)) throw new Error('hex string contains non-hex characters');
-  const bytes = new Uint8Array(cleaned.match(/.{2}/g).map(b => parseInt(b, 16)));
+
+  const bytes = new Uint8Array(cleaned.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    const pair = cleaned.substr(i * 2, 2);
+    const val = parseInt(pair, 16);
+    if (Number.isNaN(val)) throw new Error('Invalid hex byte: ' + pair);
+    bytes[i] = val & 0xff;
+  }
   return bytes.buffer;
 }
 
@@ -19,12 +50,26 @@ const dompurifyConfig = {
   ALLOWED_ATTR: ['href','title','target'],
   ALLOWED_URI_REGEXP: /^(https?:\/\/|\/)/i
 };
+
 function sanitizeUsername(name) {
-  return DOMPurify.sanitize(String(name || ''), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim() || 'Anonymous';
+  const raw = String(name || '');
+  const sanitized = DOMPurify.sanitize(raw, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+
+  const tmp = document.createElement('div');
+  tmp.innerHTML = sanitized;
+  let text = (tmp.textContent || '').trim();
+  if (!text) return 'Anonymous';
+
+  if (text.length > 64) text = text.slice(0, 64);
+  return text;
 }
+
 function sanitizeContent(html) {
-  return DOMPurify.sanitize(String(html || ''), dompurifyConfig);
+  const s = DOMPurify.sanitize(String(html || ''), dompurifyConfig);
+  if (s.length > 10000) return s.slice(0, 10000);
+  return s;
 }
+
 function enforceSafeAnchors(container) {
   if (!container || !container.querySelectorAll) return;
   const anchors = container.querySelectorAll('a[href]');
@@ -35,7 +80,11 @@ function enforceSafeAnchors(container) {
         a.removeAttribute('href');
       } else {
         if (a.getAttribute('target') === '_blank') {
-          a.setAttribute('rel', 'noopener noreferrer');
+          const existing = (a.getAttribute('rel') || '').split(/\s+/).filter(Boolean);
+          const tokens = new Set(existing);
+          tokens.add('noopener');
+          tokens.add('noreferrer');
+          a.setAttribute('rel', Array.from(tokens).join(' '));
         } else {
           a.removeAttribute('target');
         }
@@ -49,53 +98,89 @@ function enforceSafeAnchors(container) {
 }
 
 async function getKeyFromUrl() {
-  const keyHex = decodeURIComponent(window.location.hash.substring(1) || '');
+  let keyHex = '';
+  try {
+    keyHex = decodeURIComponent((window.location.hash || '').substring(1) || '');
+  } catch (e) {
+    console.warn('getKeyFromUrl: failed to decode hash', e);
+    return null;
+  }
   if (!keyHex) return null;
   if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) return null;
   try {
     const raw = hexToBuffer(keyHex);
-    return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt','decrypt']);
+    return await crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt','decrypt']);
   } catch (e) {
     console.error('getKeyFromUrl: import failed', e);
     return null;
   }
 }
+
 async function generateAndStoreKey() {
   const key = await crypto.subtle.generateKey({ name:'AES-GCM', length:256 }, true, ['encrypt','decrypt']);
   const raw = await crypto.subtle.exportKey('raw', key);
   window.location.hash = bufferToHex(raw);
   return key;
 }
+
 async function encryptText(text, key) {
   const data = new TextEncoder().encode(text);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const cipher = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, data);
   return { cipher: bufferToHex(cipher), iv: bufferToHex(iv) };
 }
+
 async function decryptText(cipherHex, ivHex, key) {
   try {
-    const data = hexToBuffer(cipherHex);
-    const ivBuff = hexToBuffer(ivHex);
-    const ivView = new Uint8Array(ivBuff);
-    if (ivView.length !== 12) throw new Error('Invalid IV length');
-    const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv: ivView }, key, data);
+    if (typeof cipherHex !== 'string' || typeof ivHex !== 'string') {
+      throw new TypeError('cipherHex and ivHex must be strings');
+    }
+
+    const dataBuf = hexToBuffer(cipherHex);
+    const ivBuf = hexToBuffer(ivHex);
+    const dataView = new Uint8Array(dataBuf);
+    const ivView = new Uint8Array(ivBuf);
+
+    if (ivView.length !== 12) {
+      throw new Error(`Invalid IV length: ${ivView.length} (expected 12)`);
+    }
+
+    if (dataView.length < 16) {
+      console.warn('decryptText: ciphertext shorter than expected (length)', dataView.length);
+    }
+
+    if (window.__CHAT_DEBUG__) {
+      const sample = (u8) => {
+        const head = Array.from(u8.slice(0, Math.min(6, u8.length))).map(b => b.toString(16).padStart(2,'0')).join('');
+        return `${head}${u8.length > 6 ? '...' : ''} (len=${u8.length})`;
+      };
+      console.debug('decryptText debug — iv:', sample(ivView), 'cipher:', sample(dataView));
+    }
+
+    const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv: ivView }, key, dataBuf);
     return new TextDecoder().decode(plain);
   } catch (e) {
+    if (e instanceof DOMException) {
+      console.warn('decryptText: AES-GCM authentication failed (DOMException). Likely wrong key/iv/ciphertext tampering.', e);
+    } else {
+      console.warn('decryptText error:', e);
+    }
     throw e;
   }
 }
 
 function getRoomFromUrl() {
-  const parts = window.location.pathname.split('/');
-  let room = parts[parts.length - 1];
-  if (/^[0-9a-f]{16}$/.test(room)) {
-    localStorage.setItem('room', room);
-    return room;
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  let room = parts[parts.length - 1] || '';
+
+  if (/^[0-9a-f]{16}$/i.test(room)) {
+    localStorage.setItem('room', room.toLowerCase());
+    return room.toLowerCase();
   }
   const stored = localStorage.getItem('room');
-  if (/^[0-9a-f]{16}$/.test(stored)) {
+  if (stored && /^[0-9a-f]{16}$/i.test(stored)) {
     history.replaceState(null, '', `/room/${stored}${window.location.hash}`);
-    return stored;
+    return stored.toLowerCase();
   }
   const rnd = crypto.getRandomValues(new Uint8Array(8));
   const id = Array.from(rnd).map(b => b.toString(16).padStart(2,'0')).join('');
@@ -103,6 +188,7 @@ function getRoomFromUrl() {
   history.pushState(null, '', `/room/${id}${window.location.hash}`);
   return id;
 }
+
 function setupNickname() {
   let nickname = localStorage.getItem("nickname");
   if (!nickname) {
@@ -117,12 +203,19 @@ function setupNickname() {
   if (el) el.value = nickname;
 }
 
+function getMessageFingerprint(message) {
+  const user = String(message.user || '').trim();
+  const content = String(message.content || '').replace(/\s+/g,' ').trim();
+  return `${user}::${content}`;
+}
+
 function getMessageId(message) {
   const user = String(message.user || '');
   const content = String(message.content || '');
   const timestamp = String(message.timestamp || '');
   return `${user}_${content}_${timestamp}`;
 }
+
 function createMessageElement(message) {
   const userSafe = sanitizeUsername(message.user);
   const contentSafe = sanitizeContent(message.content);
@@ -155,14 +248,6 @@ function createMessageElement(message) {
   return wrapper;
 }
 
-let ROOM = null;
-let KEY = null;
-let lastSentMessage = null;
-
-function isUserNearBottom(container, threshold = 50) {
-  return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
-}
-
 function updateExistingMessageElement(existingEl, { user, content, timestamp }) {
   existingEl.classList.remove('pending', 'failed');
   const inner = existingEl.querySelector('.message-content');
@@ -180,7 +265,16 @@ function updateExistingMessageElement(existingEl, { user, content, timestamp }) 
   }
 }
 
+let ROOM = null;
+let KEY = null;
+let lastSentMessage = null;
+let LAST_SEEN_ID = 0;
 let lastNotifiedAt = 0;
+const notifiedIds = new Set();
+
+function isUserNearBottom(container, threshold = 50) {
+  return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+}
 
 function requestNotificationPermission() {
   if (!("Notification" in window)) {
@@ -231,8 +325,6 @@ function showNotification(message) {
   }
 }
 
-const notifiedIds = new Set();
-
 async function fetchMessages() {
   try {
     if (!ROOM) return;
@@ -241,8 +333,17 @@ async function fetchMessages() {
       if (!KEY) return;
     }
 
-    const res = await fetch(`/api/messages/${encodeURIComponent(ROOM)}`);
-    if (!res.ok) return;
+    const limit = 200;
+    let url = `/api/messages/${encodeURIComponent(ROOM)}?order=asc&limit=${limit}`;
+    if (LAST_SEEN_ID && LAST_SEEN_ID > 0) {
+      url = `/api/messages/${encodeURIComponent(ROOM)}?since_id=${LAST_SEEN_ID}&order=asc&limit=${limit}`;
+    }
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn('fetchMessages: server returned', res.status);
+      return;
+    }
     const messages = await res.json();
 
     const messagesDiv = document.getElementById('messages');
@@ -252,11 +353,18 @@ async function fetchMessages() {
 
     const userWasNearBottom = isUserNearBottom(messagesDiv, 50);
 
-    const existingMap = new Map(
-      Array.from(messagesDiv.children)
-        .filter(el => el.dataset.id)
-        .map(el => [el.dataset.id, el])
-    );
+    const existingMap = new Map();
+    Array.from(messagesDiv.children).forEach(el => {
+      if (el.dataset.serverId) {
+        existingMap.set(`s:${el.dataset.serverId}`, el);
+      }
+      if (el.dataset.id) {
+        existingMap.set(`id:${el.dataset.id}`, el);
+      }
+      if (el.dataset.fingerprint) {
+        existingMap.set(`fp:${el.dataset.fingerprint}`, el);
+      }
+    });
 
     const decrypted = [];
     for (const message of messages) {
@@ -266,12 +374,15 @@ async function fetchMessages() {
 
         if (!message.timestamp) {
           console.warn("Message missing timestamp, skipping:", message);
+          LAST_SEEN_ID = Math.max(LAST_SEEN_ID, Number(message.id));
           continue;
         }
 
-        decrypted.push({ user, content, timestamp: message.timestamp });
+        decrypted.push({ serverId: message.id, user, content, timestamp: message.timestamp });
+        LAST_SEEN_ID = Math.max(LAST_SEEN_ID, Number(message.id));
       } catch (e) {
-        console.warn('Skipping message (decrypt/error):', e);
+        console.warn('Skipping message (decrypt/error) serverId=' + String(message.id) + ':', e);
+        LAST_SEEN_ID = Math.max(LAST_SEEN_ID, Number(message.id));
       }
     }
 
@@ -279,33 +390,58 @@ async function fetchMessages() {
     const prevScrollTop = messagesDiv.scrollTop;
     const prevScrollHeight = messagesDiv.scrollHeight;
 
-    const myName = sanitizeUsername(localStorage.getItem("nickname") || "Anonymous");
-
     for (const m of decrypted) {
-      const id = getMessageId(m);
+      const plaintextId = getMessageId({ user: m.user, content: m.content, timestamp: m.timestamp });
+      const serverKey = `s:${m.serverId}`;
+      const idKey = `id:${plaintextId}`;
+      const fingerprint = getMessageFingerprint({ user: m.user, content: m.content });
+      const fpKey = `fp:${fingerprint}`;
 
-      if (existingMap.has(id)) {
-        const existingEl = existingMap.get(id);
-        if (existingEl.classList.contains('pending') || existingEl.classList.contains('failed')) {
-          updateExistingMessageElement(existingEl, m);
-        }
+      if (existingMap.has(serverKey)) {
+        const existingEl = existingMap.get(serverKey);
+        updateExistingMessageElement(existingEl, { user: m.user, content: m.content, timestamp: m.timestamp });
+        existingEl.dataset.id = plaintextId;
+        existingEl.dataset.fingerprint = fingerprint;
         continue;
       }
 
-      const elem = createMessageElement(m);
-      elem.dataset.id = id;
+      if (existingMap.has(fpKey)) {
+        const existingEl = existingMap.get(fpKey);
+        updateExistingMessageElement(existingEl, { user: m.user, content: m.content, timestamp: m.timestamp });
+        existingEl.dataset.serverId = String(m.serverId);
+        existingEl.dataset.id = plaintextId;
+        existingEl.dataset.fingerprint = fingerprint;
+        continue;
+      }
+
+      if (existingMap.has(idKey)) {
+        const existingEl = existingMap.get(idKey);
+        updateExistingMessageElement(existingEl, { user: m.user, content: m.content, timestamp: m.timestamp });
+        existingEl.dataset.serverId = String(m.serverId);
+        existingEl.dataset.fingerprint = fingerprint;
+        continue;
+      }
+
+      const elem = createMessageElement({ user: m.user, content: m.content, timestamp: m.timestamp });
+      elem.dataset.serverId = String(m.serverId);
+      elem.dataset.id = plaintextId;
+      elem.dataset.fingerprint = fingerprint;
       frag.appendChild(elem);
 
-      if (!notifiedIds.has(id)) {
+      if (!notifiedIds.has(elem.dataset.id)) {
         if (Notification.permission === "granted") {
-          console.debug("🔔 Showing notification for", id);
+          console.debug("🔔 Showing notification for", elem.dataset.id);
           showNotification(m);
         }
-        notifiedIds.add(id);
+        notifiedIds.add(elem.dataset.id);
       }
     }
 
-    if (frag.childNodes.length) messagesDiv.appendChild(frag);
+    if (frag.childNodes.length) {
+      messagesDiv.appendChild(frag);
+
+      scrollMessagesToBottom(messagesDiv, false);
+    }
 
     const newScrollHeight = messagesDiv.scrollHeight;
     const dh = newScrollHeight - prevScrollHeight;
@@ -325,42 +461,68 @@ async function fetchMessages() {
 async function createMessage() {
   const rawUserEl = document.getElementById('user');
   const rawContentEl = document.getElementById('content');
+  const messagesDiv = document.getElementById('messages');
   if (!rawContentEl) return;
 
   const rawUser = sanitizeUsername(rawUserEl ? rawUserEl.value.trim() : 'Anonymous');
-  const rawContent = sanitizeContent(rawContentEl.value.trim());
-  if (!rawContent) return;
+  const rawContentText = rawContentEl.value.trim();
+  if (!rawContentText) return;
 
-  const newMessageSignature = `${rawUser}::${rawContent}`;
+  const sanitizedContent = sanitizeContent(rawContentText);
+
+  const newMessageSignature = `${rawUser}::${rawContentText}`;
   if (newMessageSignature === lastSentMessage) {
     console.warn('Duplicate message blocked');
     return;
   }
   lastSentMessage = newMessageSignature;
 
+  const pendingTimestamp = new Date().toISOString();
+
+  const pendingMsgForId = { user: rawUser, content: rawContentText, timestamp: pendingTimestamp, pending: true };
+  const elem = createMessageElement({ user: rawUser, content: sanitizedContent, timestamp: pendingTimestamp, pending: true });
+
+  const pendingId = getMessageId(pendingMsgForId);
+  const pendingFingerprint = getMessageFingerprint(pendingMsgForId);
+  elem.dataset.id = pendingId;
+  elem.dataset.fingerprint = pendingFingerprint;
+
+  if (messagesDiv) {
+    messagesDiv.appendChild(elem);
+
+    scrollMessagesToBottom(messagesDiv, false);
+  }
+
   rawContentEl.value = '';
 
   if (!KEY) KEY = await getKeyFromUrl();
-  if (!KEY) { console.error('No key'); return; }
+  if (!KEY) {
+    console.error('No key');
+    if (elem) { elem.classList.remove('pending'); elem.classList.add('failed'); }
+    return;
+  }
   if (!ROOM) ROOM = getRoomFromUrl();
 
   try {
-    const { cipher: content, iv } = await encryptText(rawContent, KEY);
+    const { cipher: content, iv } = await encryptText(rawContentText, KEY);
     const { cipher: user, iv: user_iv } = await encryptText(rawUser, KEY);
 
-    fetch(`/api/messages/${encodeURIComponent(ROOM)}`, {
+    const res = await fetch(`/api/messages/${encodeURIComponent(ROOM)}`, {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
       body: JSON.stringify({ user, user_iv, content, iv })
-    }).catch(err => {
-      console.error('Failed to send message', err);
-      const pendingEl = messagesDiv ? messagesDiv.querySelector(`[data-id="${elem.dataset.id}"]`) : null;
-      if (pendingEl) pendingEl.classList.remove('pending'), pendingEl.classList.add('failed');
     });
-  } catch (e) {
-    console.error('Encryption/send failed', e);
-    const pendingEl = messagesDiv ? messagesDiv.querySelector(`[data-id="${elem.dataset.id}"]`) : null;
-    if (pendingEl) pendingEl.classList.remove('pending'), pendingEl.classList.add('failed');
+
+    if (!res.ok) {
+      throw new Error(`Server responded with ${res.status}`);
+    }
+
+  } catch (err) {
+    console.error('Failed to send message', err);
+    if (elem) {
+      elem.classList.remove('pending');
+      elem.classList.add('failed');
+    }
   }
 }
 
@@ -398,9 +560,9 @@ if (contentEl) {
       if (dh !== 0) {
         const wasNearBottom = isUserNearBottom(messagesDiv, 50);
         if (wasNearBottom) {
-          messagesDiv.scrollTop = messagesDiv.scrollHeight; 
+          messagesDiv.scrollTop = messagesDiv.scrollHeight;
         } else {
-          messagesDiv.scrollTop = (messagesDiv.scrollTop || 0) + dh; 
+          messagesDiv.scrollTop = (messagesDiv.scrollTop || 0) + dh;
         }
         messagesDiv._lastKnownScrollHeight = curr;
       }
@@ -409,5 +571,5 @@ if (contentEl) {
   }
 
   await fetchMessages();
-  setInterval(fetchMessages, 3000);
+  setInterval(fetchMessages, 1000);
 })();

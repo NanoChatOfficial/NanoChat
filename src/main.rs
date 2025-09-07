@@ -1,7 +1,9 @@
-#[macro_use] 
+#![allow(unused)]
+#[macro_use]
 extern crate rocket;
 
 use rocket::data::{Data, FromData, Outcome, ToByteUnit};
+use rocket::form::FromForm;
 use rocket::fs::{FileServer, NamedFile};
 use rocket::http::Status;
 use rocket::serde::{json::Json, Deserialize, Serialize};
@@ -40,7 +42,6 @@ struct NewMessage {
     content: String,
     iv: String,
 }
-
 
 fn room_path(room: &str) -> PathBuf {
     Path::new("messages").join(room)
@@ -138,9 +139,83 @@ fn utc_now_iso() -> String {
     now.to_rfc3339()
 }
 
-#[get("/messages/<room>")]
-fn get_messages(room: &str) -> Json<Vec<Message>> {
-    Json(load_messages(room))
+#[derive(FromForm)]
+struct MsgQuery {
+
+    sort: Option<String>,
+
+    order: Option<String>,
+
+    since_id: Option<usize>,
+
+    since_ts: Option<String>,
+
+    limit: Option<usize>,
+}
+
+const MAX_LIMIT: usize = 1000;
+
+fn apply_query(mut messages: Vec<Message>, params: Option<MsgQuery>) -> Vec<Message> {
+    if let Some(q) = params {
+
+        if let Some(since_id) = q.since_id {
+            messages.retain(|m| m.id > since_id);
+        }
+
+        if let Some(since_ts) = q.since_ts {
+            if let Ok(since_dt) = DateTime::parse_from_rfc3339(&since_ts).map(|dt| dt.with_timezone(&Utc)) {
+                messages.retain(|m| {
+                    DateTime::parse_from_rfc3339(&m.timestamp)
+                        .map(|dt| dt.with_timezone(&Utc) > since_dt)
+                        .unwrap_or(false)
+                });
+            }
+        }
+
+        let sort_by_ts = matches!(q.sort.as_deref(), Some("timestamp"));
+        let asc = !matches!(q.order.as_deref(), Some("desc"));
+
+        if sort_by_ts {
+            messages.sort_unstable_by(|a, b| {
+                let at = DateTime::parse_from_rfc3339(&a.timestamp).ok();
+                let bt = DateTime::parse_from_rfc3339(&b.timestamp).ok();
+                let ord = match (at, bt) {
+                    (Some(at), Some(bt)) => at.cmp(&bt),
+                    (Some(_), None) => std::cmp::Ordering::Greater,
+                    (None, Some(_)) => std::cmp::Ordering::Less,
+                    (None, None) => a.id.cmp(&b.id),
+                };
+                if asc { ord } else { ord.reverse() }
+            });
+        } else {
+
+            if asc {
+                messages.sort_unstable_by_key(|m| m.id);
+            } else {
+                messages.sort_unstable_by_key(|m| std::cmp::Reverse(m.id));
+            }
+        }
+
+        let limit = q.limit.unwrap_or(100).min(MAX_LIMIT);
+        if messages.len() > limit {
+            messages.truncate(limit);
+        }
+    } else {
+
+        messages.sort_unstable_by_key(|m| m.id);
+        if messages.len() > MAX_LIMIT {
+            messages.truncate(MAX_LIMIT);
+        }
+    }
+
+    messages
+}
+
+#[get("/messages/<room>?<params..>")]
+fn get_messages(room: &str, params: Option<MsgQuery>) -> Json<Vec<Message>> {
+    let messages = load_messages(room);
+    let selected = apply_query(messages, params);
+    Json(selected)
 }
 
 #[get("/messages", rank = 2)]
