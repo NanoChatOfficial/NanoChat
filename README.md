@@ -4,49 +4,69 @@
 
 <!-- FEATURES -->
 
-## Features:
+## Features
 
 - Small codebase
-
 - Messages expire after 30 days
-
 - Docker support
 
-## Technical details:
+## Technical details
 
 - AES-256-GCM for client-side encryption
-
 - Key is not sent to server
 
 <!-- INSTALLATION -->
 
-## Server setup:
+## Installation
 
-This app uses `pipenv` to manage the dependencies and virtual environment.
-Install using the instructions on [here](https://pypi.org/project/pipenv/).
+First, clone the repository:
 
-    sudo apt update
-    sudo apt install git python3 python3-pip
-    git clone https://github.com/umutcamliyurt/NanoChat.git
+    git clone https://github.com/NanoChatOfficial/NanoChat.git
+
+### Backend setup
+
     cd NanoChat/backend/
     python3 -m pipenv sync
     python3 -m pipenv shell
     python manage.py runserver
 
-## Server setup with Docker:
+### Backend setup with Docker
 
-    git clone https://github.com/umutcamliyurt/NanoChat
     cd NanoChat/
     docker build -t nanochat .
     docker run -d --network=host --name nanochat nanochat
 
-## Requirements:
+### Frontend setup
 
-- [Python](https://www.python.org/downloads/), [Tor](https://gitlab.torproject.org/tpo/core/tor)
+    cd NanoChat/frontend/
+    pnpm install
+    pnpm run preview
+
+_For the development server, run `pnpm run dev` instead of `pnpm run preview`._
+
+**Note:**
+_By default, the backend server runs on port `8000` and the frontend runs on port `5173`._
+
+<!-- REQUIREMENTS -->
+
+## Requirements
+
+### Backend
+
+- [Python](https://www.python.org/downloads/)
+- [pipenv](https://pypi.org/project/pipenv/)
+
+### Frontend
+
+- [node.js](https://nodejs.org/en/download/) (install with pnpm)
+
+### Optional
+
+- [Docker](https://docs.docker.com/engine/) (for Docker deployment)
 
 <!-- SCREENSHOT -->
 
-## Screenshot:
+## Screenshot
 
 ![Screenshot](screenshot.png)
 
