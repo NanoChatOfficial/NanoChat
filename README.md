@@ -26,6 +26,8 @@ First, clone the repository:
 ### Backend setup
 
     cd NanoChat/backend/
+    python3 -m pip install --user pipenv
+    pipenv --python $(which python3)
     python3 -m pipenv sync
     python3 -m pipenv shell
     python manage.py runserver
@@ -40,6 +42,7 @@ First, clone the repository:
 
     cd NanoChat/frontend/
     pnpm install
+    pnpm build
     pnpm run preview
 
 _For the development server, run `pnpm run dev` instead of `pnpm run preview`._
