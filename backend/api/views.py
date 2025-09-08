@@ -1,46 +1,21 @@
-import sqlite3
 from pathlib import Path
 from datetime import datetime, timedelta
 from django.conf import settings
-from django.http import JsonResponse, HttpResponseBadRequest, HttpResponseNotFound
+from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 import json
-import os
+
+from .models import Message
 
 AES_GCM_IV_BYTES = 12
 AES_GCM_TAG_BYTES = 16
 MAX_LIMIT = 1000
 
-DB_PATH = Path(settings.BASE_DIR) / "messages.db"
-
 with open(Path(settings.BASE_DIR) / "config.json") as f:
     CONFIG = json.load(f)
-
-def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            room TEXT NOT NULL,
-            user TEXT NOT NULL,
-            user_iv TEXT NOT NULL,
-            content TEXT NOT NULL,
-            iv TEXT NOT NULL,
-            timestamp TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-init_db()
 
 def is_hex(s: str) -> bool:
     return all(c in "0123456789abcdefABCDEF" for c in s)
@@ -55,86 +30,33 @@ def valid_hex_len(hex_str: str, min_bytes: int, exact_bytes=None) -> bool:
         return False
     return True
 
-def utc_now_iso() -> str:
-    return datetime.utcnow().isoformat() + "Z"
-
-def load_messages(room: str) -> list:
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT * FROM messages WHERE room = ? ORDER BY id ASC", (room,))
-    rows = c.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
-
-def apply_query(messages: list, params: dict) -> list:
-    if not params:
-        return messages[:MAX_LIMIT]
-
-    since_id = params.get("since_id")
-    since_ts = params.get("since_ts")
-    limit = min(int(params.get("limit", 100)), MAX_LIMIT)
-    sort = params.get("sort")
-    order = params.get("order", "asc")
-
-    if since_id:
-        messages = [m for m in messages if m["id"] > int(since_id)]
-    if since_ts:
-        try:
-            dt = parse_datetime(since_ts)
-            messages = [m for m in messages if parse_datetime(m["timestamp"]) > dt]
-        except Exception:
-            pass
-
-    reverse = order.lower() == "desc"
-    if sort == "timestamp":
-        messages.sort(key=lambda m: parse_datetime(m["timestamp"]), reverse=reverse)
-    else:
-        messages.sort(key=lambda m: m["id"], reverse=reverse)
-
-    return messages[:limit]
-
-def save_message_to_db(message: dict):
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO messages (room, user, user_iv, content, iv, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (message["room"], message["user"], message["user_iv"],
-          message["content"], message["iv"], message["timestamp"]))
-    conn.commit()
-    message["id"] = c.lastrowid  
-    conn.close()
-
 def cleanup_expired_messages():
     expiration = timedelta(days=30)
-    cutoff = datetime.utcnow() - expiration
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("DELETE FROM messages WHERE timestamp < ?", (cutoff.isoformat() + "Z",))
-    deleted = c.rowcount
-    conn.commit()
-    conn.close()
-    if deleted > 0:
-        print(f"Removed {deleted} expired messages")
+    cutoff = timezone.now() - expiration
+    deleted_count, _ = Message.objects.filter(timestamp__lt=cutoff).delete()
+    if deleted_count > 0:
+        print(f"Removed {deleted_count} expired messages")
 
-def apply_query_sql(room: str, params: dict) -> list:
-    conn = get_db_connection()
-    c = conn.cursor()
+def get_messages(request, room):
+    if len(room) != 16 or not is_hex(room):
+        return HttpResponseBadRequest()
 
-    query = "SELECT * FROM messages WHERE room = ?"
-    args = [room]
+    params = {k: v for k, v in request.GET.items() if k in ["since_id", "since_ts", "limit", "sort", "order"]}
+
+    queryset = Message.objects.filter(room=room)
 
     since_id = params.get("since_id")
     since_ts = params.get("since_ts")
     if since_id:
-        query += " AND id > ?"
-        args.append(int(since_id))
+        try:
+            queryset = queryset.filter(id__gt=int(since_id))
+        except (ValueError, TypeError):
+            pass
     if since_ts:
         try:
             dt = parse_datetime(since_ts)
             if dt:
-                query += " AND timestamp > ?"
-                args.append(dt.isoformat() + "Z")
+                queryset = queryset.filter(timestamp__gt=dt)
         except Exception:
             pass
 
@@ -144,29 +66,21 @@ def apply_query_sql(room: str, params: dict) -> list:
         sort = "id"
     if order not in ["asc", "desc"]:
         order = "asc"
-    query += f" ORDER BY {sort} {order}"
+    order_by_field = f'{"-" if order == "desc" else ""}{sort}'
+    queryset = queryset.order_by(order_by_field)
 
     limit = min(int(params.get("limit", 100)), MAX_LIMIT)
-    query += " LIMIT ?"
-    args.append(limit)
 
-    c.execute(query, tuple(args))
-    rows = c.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    messages = list(queryset[:limit].values())
 
-def get_messages(request, room):
-    if len(room) != 16 or not is_hex(room):
-        return HttpResponseBadRequest()
+    for msg in messages:
+        if isinstance(msg['timestamp'], datetime):
+            msg['timestamp'] = msg['timestamp'].isoformat().replace('+00:00', 'Z')
 
-    params = {k: v for k, v in request.GET.items() if k in ["since_id", "since_ts", "limit", "sort", "order"]}
-    selected = apply_query_sql(room, params)
-    return JsonResponse(selected, safe=False)
+    return JsonResponse(messages, safe=False)
 
 @csrf_exempt
 def create_message(request, room):
-    if request.method != "POST":
-        return HttpResponseBadRequest()
     if len(room) != 16 or not is_hex(room):
         return HttpResponseBadRequest()
 
@@ -190,22 +104,28 @@ def create_message(request, room):
     if not valid_hex_len(data.get("user", ""), AES_GCM_TAG_BYTES, None):
         return HttpResponseBadRequest()
 
-    message = {
-        "room": room,
-        "user": data["user"],
-        "user_iv": data["user_iv"],
-        "content": data["content"],
-        "iv": data["iv"],
-        "timestamp": utc_now_iso()
-    }
-
     try:
-        save_message_to_db(message)
+        message_obj = Message.objects.create(
+            room=room,
+            user=data["user"],
+            user_iv=data["user_iv"],
+            content=data["content"],
+            iv=data["iv"],
+        )
     except Exception as e:
         print(f"Save error: {e}")
         return HttpResponseBadRequest()
 
-    return JsonResponse(message)
+    message_data = {
+        "id": message_obj.id,
+        "room": message_obj.room,
+        "user": message_obj.user,
+        "user_iv": message_obj.user_iv,
+        "content": message_obj.content,
+        "iv": message_obj.iv,
+        "timestamp": message_obj.timestamp.isoformat().replace('+00:00', 'Z')
+    }
+    return JsonResponse(message_data)
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
