@@ -1,7 +1,6 @@
-
 import axios from "axios";
 
-const onionUrl = import.meta.env.VITE_ONION_URL || "";
+const onionUrl = import.meta.env.VITE_ONION_URL || "http://localhost:8000";
 axios.defaults.baseURL = onionUrl;
 
 export const fetchMessagesAPI = (roomId: string) => {
