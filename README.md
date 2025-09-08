@@ -23,6 +23,12 @@ First, clone the repository:
 
     git clone https://github.com/NanoChatOfficial/NanoChat.git
 
+### Onion service setup with Docker
+
+    cd NanoChat/
+    sudo docker build --network=host -t nanochat .
+    sudo docker run --network=host --name nanochat nanochat
+
 ### Backend setup
 
     cd NanoChat/backend/
@@ -31,12 +37,6 @@ First, clone the repository:
     python3 -m pipenv sync
     python3 -m pipenv shell
     python manage.py runserver
-
-### Backend setup with Docker
-
-    cd NanoChat/
-    sudo docker build --network=host -t nanochat .
-    sudo docker run --network=host --name nanochat nanochat
 
 ### Frontend setup
 
