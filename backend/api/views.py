@@ -66,14 +66,6 @@ def load_messages(room: str) -> list:
     conn.close()
     return [dict(row) for row in rows]
 
-def next_id(room: str) -> int:
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT MAX(id) FROM messages WHERE room = ?", (room,))
-    max_id = c.fetchone()[0]
-    conn.close()
-    return (max_id or 0) + 1
-
 def apply_query(messages: list, params: dict) -> list:
     if not params:
         return messages[:MAX_LIMIT]
@@ -105,11 +97,12 @@ def save_message_to_db(message: dict):
     conn = get_db_connection()
     c = conn.cursor()
     c.execute("""
-        INSERT INTO messages (id, room, user, user_iv, content, iv, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (message["id"], message["room"], message["user"], message["user_iv"],
+        INSERT INTO messages (room, user, user_iv, content, iv, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (message["room"], message["user"], message["user_iv"],
           message["content"], message["iv"], message["timestamp"]))
     conn.commit()
+    message["id"] = c.lastrowid  
     conn.close()
 
 def cleanup_expired_messages():
@@ -198,7 +191,6 @@ def create_message(request, room):
         return HttpResponseBadRequest()
 
     message = {
-        "id": next_id(room),
         "room": room,
         "user": data["user"],
         "user_iv": data["user_iv"],
