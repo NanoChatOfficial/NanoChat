@@ -21,6 +21,7 @@ export default function Room({ roomId, roomKey }: RoomProps) {
       <ChatBox
         className="grid w-full max-w-3xl grid-cols-[1fr_2.5rem] items-center gap-2 p-2 mx-auto"
         roomId={roomId}
+        roomKey={roomKey}
       />
     </>
   );

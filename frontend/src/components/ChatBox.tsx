@@ -1,57 +1,33 @@
 import { useRef } from "react";
-import axios from "axios";
-import { hexToUint8Array, generateIv, encrypt } from "../utils/crypto";
 import { BiSolidSend } from "react-icons/bi";
+import { useSendMessage } from "../hooks/useSendMessage";
 
-const ChatBox = ({
-  roomId,
-  className,
-}: {
+interface ChatBoxProps {
   roomId: string;
+  roomKey: string;
   className: string;
-}) => {
+}
+
+const ChatBox = ({ roomId, roomKey, className }: ChatBoxProps) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sendMessage = useSendMessage(roomId, roomKey);
 
-  async function sendMessage() {
-    const keyBytes = hexToUint8Array(window.location.hash.slice(1));
-    const user = localStorage.getItem("username");
-    const user_iv = generateIv();
-    const iv = generateIv();
+  const handleSendMessage = async () => {
     const content = textareaRef.current?.value || "";
+    if (content.trim()) {
+      await sendMessage(content);
+      if (textareaRef.current) {
+        textareaRef.current.value = "";
+      }
+    }
+  };
 
-    if (!content.trim()) return; // Don't send empty messages
-
-    const [encryptedContent, encryptedUser] = await Promise.all([
-      encrypt(content, keyBytes, hexToUint8Array(iv)),
-      encrypt(user!, keyBytes, hexToUint8Array(user_iv)),
-    ]);
-
-    const requestData = {
-      user: encryptedUser.encrypted,
-      user_iv: user_iv,
-      content: encryptedContent.encrypted,
-      iv: iv,
-    };
-
-    axios
-      .post("/api/messages/" + roomId, requestData)
-      .then((response) => {
-        console.log(response.data);
-      })
-      .catch((error) => {
-        console.error("Error sending message:", error);
-      });
-
-    textareaRef.current!.value = "";
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSendMessage();
     }
-    // Shift+Enter will insert a newline by default
-  }
+  };
 
   return (
     <div className={className}>
@@ -63,7 +39,7 @@ const ChatBox = ({
       ></textarea>
       <button
         className="bg-blue-400 cursor-pointer flex items-center justify-center rounded-full h-10 w-10"
-        onClick={sendMessage}
+        onClick={handleSendMessage}
       >
         <BiSolidSend size={16} />
       </button>
