@@ -33,8 +33,8 @@ First, clone the repository:
 ### Backend setup with Docker
 
     cd NanoChat/
-    docker build -t nanochat .
-    docker run -d --network=host --name nanochat nanochat
+    sudo docker build --network=host -t nanochat .
+    sudo docker run --network=host --name nanochat nanochat
 
 ### Frontend setup
 

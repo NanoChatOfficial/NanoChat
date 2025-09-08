@@ -12,12 +12,17 @@ RUN apk update && \
       git \
       curl
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm && \
+    pip3 install --no-cache-dir pipenv --break-system-packages
 
 WORKDIR /app
 
-COPY backend/requirements.txt backend/
-RUN pip3 install --no-cache-dir -r backend/requirements.txt --break-system-packages
+COPY backend/Pipfile backend/Pipfile.lock backend/
+
+
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+RUN cd backend && \
+    python3 -m pipenv sync --system
 
 COPY . .
 

@@ -6,7 +6,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "your-secret-key"
 DEBUG = True
 APPEND_SLASH = False
-ALLOWED_HOSTS = []
+
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+
+TOR_ONION = os.environ.get("TOR_ONION")
+if TOR_ONION:
+    ALLOWED_HOSTS.append(TOR_ONION)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
