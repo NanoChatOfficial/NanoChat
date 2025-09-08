@@ -24,6 +24,8 @@ const MessageArea = ({ className, messages }: MessageAreaProps) => {
   const prevMessagesLength = useRef<number>(messages.length);
 
   useEffect(() => {
+    Notification.requestPermission();
+
     const hasNewMessage = messages.length > prevMessagesLength.current;
     const username = localStorage.getItem("username");
 
