@@ -1,4 +1,3 @@
-
 import MessageArea from "./MessageArea";
 import ChatBox from "./ChatBox";
 import { useMessages } from "../hooks/useMessages";
@@ -15,8 +14,14 @@ export default function Room({ roomId, roomKey }: RoomProps) {
 
   return (
     <>
-      <MessageArea className="flex-1 p-6 overflow-y-auto" messages={messages} />
-      <ChatBox roomId={roomId} />
+      <MessageArea
+        className="flex-1 p-6 overflow-y-auto w-full max-w-3xl mx-auto"
+        messages={messages}
+      />
+      <ChatBox
+        className="grid w-full max-w-3xl grid-cols-[1fr_2.5rem] items-center gap-2 p-2 mx-auto"
+        roomId={roomId}
+      />
     </>
   );
 }

@@ -3,7 +3,13 @@ import axios from "axios";
 import { hexToUint8Array, generateIv, encrypt } from "../utils/crypto";
 import { BiSolidSend } from "react-icons/bi";
 
-const ChatBox = ({ roomId }: { roomId: string }) => {
+const ChatBox = ({
+  roomId,
+  className,
+}: {
+  roomId: string;
+  className: string;
+}) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   async function sendMessage() {
@@ -48,7 +54,7 @@ const ChatBox = ({ roomId }: { roomId: string }) => {
   }
 
   return (
-    <div className="grid grid-cols-[1fr_2.5rem] items-center gap-2 p-2">
+    <div className={className}>
       <textarea
         ref={textareaRef}
         className="textarea textarea-ghost focus:outline-none resize-none w-full"
@@ -56,7 +62,7 @@ const ChatBox = ({ roomId }: { roomId: string }) => {
         onKeyDown={handleKeyDown}
       ></textarea>
       <button
-        className="bg-primary cursor-pointer flex items-center justify-center rounded-full h-10 w-10"
+        className="bg-blue-400 cursor-pointer flex items-center justify-center rounded-full h-10 w-10"
         onClick={sendMessage}
       >
         <BiSolidSend size={16} />

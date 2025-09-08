@@ -5,8 +5,8 @@ const NavBar = () => {
         <a className="btn btn-ghost text-xl">NanoChat</a>
       </div>
       <a
-        className="btn btn-outline btn-accent rounded-full normal-case text-sm"
-        href="https://github.com/umutcamliyurt/NanoChat"
+        className="mr-4 normal-case text-sm"
+        href="https://github.com/NanoChatOfficial/NanoChat"
       >
         Source
       </a>
