@@ -21,13 +21,38 @@ const formatTimestamp = (timestamp: string): string => {
 
 const MessageArea = ({ className, messages }: MessageAreaProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const prevLengthRef = useRef<number>(messages.length);
+  const prevMessagesLength = useRef<number>(messages.length);
 
   useEffect(() => {
-    if (containerRef.current && messages.length > prevLengthRef.current) {
+    const hasNewMessage = messages.length > prevMessagesLength.current;
+    const username = localStorage.getItem("username");
+
+    if (containerRef.current && hasNewMessage) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-    prevLengthRef.current = messages.length;
+
+    if (hasNewMessage && document.hidden && username) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.user !== username) {
+        const showNotification = () => {
+          new Notification(`New message from ${lastMessage.user}`, {
+            body: lastMessage.content,
+          });
+        };
+
+        if (Notification.permission === "granted") {
+          showNotification();
+        } else if (Notification.permission !== "denied") {
+          Notification.requestPermission().then((permission) => {
+            if (permission === "granted") {
+              showNotification();
+            }
+          });
+        }
+      }
+    }
+
+    prevMessagesLength.current = messages.length;
   }, [messages]);
 
   return (

@@ -17,6 +17,14 @@ export function useMessages(roomId: string | null, key: string) {
 
         for (const msg of response.data) {
           try {
+            if (!msg.content || !msg.user || !msg.iv || !msg.user_iv) {
+              console.error(
+                "Malformed message received, skipping decryption:",
+                msg
+              );
+              continue;
+            }
+
             const [content, user] = await Promise.all([
               decrypt(
                 hexToUint8Array(msg.content),
