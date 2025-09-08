@@ -23,23 +23,26 @@ First, clone the repository:
 
     git clone https://github.com/NanoChatOfficial/NanoChat.git
 
-### Backend setup
-
-    cd NanoChat/backend/
-    python3 -m pipenv sync
-    python3 -m pipenv shell
-    python manage.py runserver
-
-### Backend setup with Docker
+### Onion service setup with Docker
 
     cd NanoChat/
     sudo docker build --network=host -t nanochat .
     sudo docker run --network=host --name nanochat nanochat
 
+### Backend setup
+
+    cd NanoChat/backend/
+    python3 -m pip install --user pipenv
+    pipenv --python $(which python3)
+    python3 -m pipenv sync
+    python3 -m pipenv shell
+    python manage.py runserver
+
 ### Frontend setup
 
     cd NanoChat/frontend/
     pnpm install
+    pnpm build
     pnpm run preview
 
 _For the development server, run `pnpm run dev` instead of `pnpm run preview`._
