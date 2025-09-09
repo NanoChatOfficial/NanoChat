@@ -1,7 +1,10 @@
 from django.db import models
 
 class Message(models.Model):
-    """Represents a message in a chat room."""
+    """
+    Represents a message in a chat room.
+    Stores encrypted content and user info with AES-GCM.
+    """
     room = models.CharField(max_length=16)
     user = models.TextField()
     user_iv = models.CharField(max_length=24)

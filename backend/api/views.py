@@ -10,6 +10,9 @@ import json
 
 from .models import Message
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
 AES_GCM_IV_BYTES = 12
 AES_GCM_TAG_BYTES = 16
 MAX_LIMIT = 1000
@@ -70,7 +73,6 @@ def get_messages(request, room):
     queryset = queryset.order_by(order_by_field)
 
     limit = min(int(params.get("limit", 100)), MAX_LIMIT)
-
     messages = list(queryset[:limit].values())
 
     for msg in messages:
@@ -78,6 +80,25 @@ def get_messages(request, room):
             msg['timestamp'] = msg['timestamp'].isoformat().replace('+00:00', 'Z')
 
     return JsonResponse(messages, safe=False)
+
+def broadcast_message(message_obj):
+    """
+    Send the message to all WebSocket clients connected to the room.
+    """
+    channel_layer = get_channel_layer()
+    message_data = {
+        "id": message_obj.id,
+        "room": message_obj.room,
+        "user": message_obj.user,
+        "user_iv": message_obj.user_iv,
+        "content": message_obj.content,
+        "iv": message_obj.iv,
+        "timestamp": message_obj.timestamp.isoformat().replace('+00:00', 'Z')
+    }
+    async_to_sync(channel_layer.group_send)(
+        f"room_{message_obj.room}",
+        {"type": "send_message", "message": message_data},
+    )
 
 @csrf_exempt
 def create_message(request, room):
@@ -115,6 +136,8 @@ def create_message(request, room):
     except Exception as e:
         print(f"Save error: {e}")
         return HttpResponseBadRequest()
+
+    broadcast_message(message_obj)
 
     message_data = {
         "id": message_obj.id,

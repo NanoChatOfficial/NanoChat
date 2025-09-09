@@ -6,6 +6,8 @@ HOSTFILE=/var/lib/tor/hidden_service/hostname
 TIMEOUT=300
 CHECK_INTERVAL=1
 VITE_PORT=4173
+FRONTEND_DIR=/app/frontend
+FRONTEND_ENV_FILE="$FRONTEND_DIR/.env.local"
 
 tor -f "$TORRC" >/dev/null 2>&1 &
 
@@ -26,14 +28,20 @@ if [ -z "$ONION" ]; then
   exit 1
 fi
 
-export __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS="$ONION"
 export TOR_ONION="$ONION"
+export __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS="$ONION"
 
-FRONTEND_ENV_FILE="/app/frontend/.env.local"
-echo "VITE_ONION_URL=http://$ONION:8000" > "$FRONTEND_ENV_FILE"
+cat > "$FRONTEND_ENV_FILE" <<EOF
+VITE_API_BASE=http://$ONION:8000
+VITE_WS_BASE=ws://$ONION:8000
+VITE_ONION_URL=http://$ONION:8000
+EOF
 
-( cd /app/frontend && pnpm build >/dev/null 2>&1 ) 
+( cd "$FRONTEND_DIR" && pnpm build >/dev/null 2>&1 )
 
-( cd /app/frontend && pnpm run preview -- --host 0.0.0.0 --port "$VITE_PORT" >/dev/null 2>&1 ) &
+( cd "$FRONTEND_DIR" && pnpm run preview -- --host 0.0.0.0 --port "$VITE_PORT" ) &
 
-exec python3 manage.py runserver 0.0.0.0:8000 >/dev/null 2>&1
+export DJANGO_SETTINGS_MODULE=backend.settings
+daphne backend.asgi:application --port 8000 &
+
+wait

@@ -6,8 +6,15 @@ name = "pypi"
 [packages]
 django = "*"
 django-cors-headers = "*"
+channels = "*"
+channels-redis = "*"
+daphne = "*"
+uvicorn = "*"
 
 [dev-packages]
+ipython = "*"
+pytest = "*"
+pytest-django = "*"
 
 [requires]
 python_version = "3.13"

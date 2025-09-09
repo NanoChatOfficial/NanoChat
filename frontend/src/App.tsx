@@ -6,7 +6,9 @@ import { useRoomManager } from "./hooks/useRoomManager";
 export interface Message {
   id: string;
   user: string;
+  user_iv: string;
   content: string;
+  iv: string;
   timestamp: string;
 }
 

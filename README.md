@@ -36,7 +36,9 @@ First, clone the repository:
     pipenv --python $(which python3)
     python3 -m pipenv sync
     python3 -m pipenv shell
-    python manage.py runserver
+    pipenv install
+    export DJANGO_SETTINGS_MODULE=backend.settings
+    daphne backend.asgi:application --port 8000
 
 ### Frontend setup
 

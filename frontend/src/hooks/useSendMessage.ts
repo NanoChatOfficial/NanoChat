@@ -2,19 +2,17 @@ import axios from "axios";
 import { hexToUint8Array, generateIv, encrypt } from "../utils/crypto";
 
 export const useSendMessage = (roomId: string, roomKey: string) => {
+  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
+
   const sendMessage = async (content: string) => {
-    if (!content.trim()) {
-      return;
-    }
+    if (!content.trim()) return;
 
     try {
       const keyBytes = hexToUint8Array(roomKey);
+
       const user = localStorage.getItem("username");
       if (!user) {
-        console.error(
-          "Username not found in localStorage. Please login again."
-        );
-        // Here you might want to redirect to a login page or show an error message to the user.
+        console.error("Username not found in localStorage. Please login again.");
         return;
       }
 
@@ -28,14 +26,18 @@ export const useSendMessage = (roomId: string, roomKey: string) => {
 
       const requestData = {
         user: encryptedUser.encrypted,
-        user_iv: user_iv,
+        user_iv,
         content: encryptedContent.encrypted,
-        iv: iv,
+        iv,
       };
 
-      await axios.post(`/api/messages/${roomId}`, requestData);
-    } catch (error) {
-      console.error("Error sending message:", error);
+      await axios.post(`${API_BASE}/api/messages/${roomId}`, requestData);
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        console.error("Axios error sending message:", error.response?.data ?? error.message);
+      } else {
+        console.error("Unexpected error sending message:", error);
+      }
     }
   };
 
