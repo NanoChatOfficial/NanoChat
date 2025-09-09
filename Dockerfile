@@ -12,7 +12,7 @@ RUN apk update && \
       git \
       curl
 
-RUN npm install -g pnpm && \
+RUN npm install -g pnpm dompurify && \
     pip3 install --no-cache-dir pipenv --break-system-packages
 
 WORKDIR /app

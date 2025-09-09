@@ -41,6 +41,7 @@ First, clone the repository:
 ### Frontend setup
 
     cd NanoChat/frontend/
+    npm install pnpm dompurify
     pnpm install
     pnpm build
     pnpm run preview

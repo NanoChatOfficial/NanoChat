@@ -2,6 +2,8 @@ import MessageArea from "./MessageArea";
 import ChatBox from "./ChatBox";
 import { useMessages } from "../hooks/useMessages";
 import { useAuth } from "../hooks/useAuth";
+import DOMPurify from "dompurify";
+import type { Message } from "../App";
 
 interface RoomProps {
   roomId: string;
@@ -10,7 +12,16 @@ interface RoomProps {
 
 export default function Room({ roomId, roomKey }: RoomProps) {
   useAuth();
-  const messages = useMessages(roomId, roomKey);
+  const rawMessages = useMessages(roomId, roomKey);
+
+  // Safely handle undefined/null messages
+  const messages: Message[] = (rawMessages ?? []).map((msg) => ({
+    ...msg,
+    content: DOMPurify.sanitize(msg.content, {
+      ALLOWED_TAGS: ["b", "i", "u", "em", "strong", "br", "p", "a"],
+      ALLOWED_ATTR: ["href", "target"],
+    }),
+  }));
 
   return (
     <>
