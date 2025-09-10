@@ -30,7 +30,6 @@ export function useMessages(roomId: string | null, key: string) {
 
           if (data.type === "room_nuked") {
             setMessages([]);
-            alert("This room has been nuked.");
             return;
           }
 
