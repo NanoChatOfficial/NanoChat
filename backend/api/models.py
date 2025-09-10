@@ -1,7 +1,7 @@
 from django.db import models
 
 class Message(models.Model):
-    room = models.CharField(max_length=16)
+    room = models.CharField(max_length=32)
     user = models.TextField()
     user_iv = models.CharField(max_length=24)
     content = models.TextField()

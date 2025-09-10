@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { BiSolidSend } from "react-icons/bi";
-import { useSendMessage } from "../hooks/useSendMessage";
+import useSendMessage from "../hooks/useSendMessage";
 
 interface ChatBoxProps {
   roomId: string;

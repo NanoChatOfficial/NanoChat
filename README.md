@@ -8,6 +8,8 @@
 
 - Small codebase
 - Messages expire after 30 days
+- Panic button to delete all messages in a room
+- WebSocket for communication
 - Docker support
 
 ## Technical details
@@ -43,15 +45,10 @@ First, clone the repository:
 ### Frontend setup
 
     cd NanoChat/frontend/
-    npm install pnpm dompurify
-    pnpm install
+    npm install pnpm
+    pnpm install dompurify
     pnpm build
     pnpm run preview
-
-_For the development server, run `pnpm run dev` instead of `pnpm run preview`._
-
-**Note:**
-_By default, the backend server runs on port `8000` and the frontend runs on port `5173`._
 
 <!-- REQUIREMENTS -->
 
