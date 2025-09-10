@@ -26,8 +26,8 @@ First, clone the repository:
 ### Onion service setup with Docker
 
     cd NanoChat/
-    sudo docker build --network=host -t nanochat .
-    sudo docker run --network=host --name nanochat nanochat
+    sudo docker compose build --no-cache
+    sudo docker compose up
 
 ### Backend setup
 

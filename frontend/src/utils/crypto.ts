@@ -35,7 +35,7 @@ export function generateIv(): string {
 }
 
 export function generateRoomID(): string {
-  return uint8ArrayToHex(window.crypto.getRandomValues(new Uint8Array(8)));
+  return uint8ArrayToHex(window.crypto.getRandomValues(new Uint8Array(16)));
 }
 
 export async function encrypt(

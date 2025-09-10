@@ -17,7 +17,8 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen">
-      <NavBar />
+      <NavBar roomId={roomId || ""}/>
+
       {roomId && key && <Room roomId={roomId} roomKey={key} />}
     </div>
   );

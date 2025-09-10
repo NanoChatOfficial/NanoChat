@@ -34,7 +34,13 @@ export const useSendMessage = (roomId: string, roomKey: string) => {
       await axios.post(`${API_BASE}/api/messages/${roomId}`, requestData);
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
-        console.error("Axios error sending message:", error.response?.data ?? error.message);
+        const message = error.response?.data?.message ?? error.message;
+
+        if (message === "This room has been nuked and cannot accept messages") {
+          alert("This room has been nuked and cannot accept messages.");
+        } else {
+          console.error("Axios error sending message:", message);
+        }
       } else {
         console.error("Unexpected error sending message:", error);
       }

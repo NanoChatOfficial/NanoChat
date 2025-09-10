@@ -14,7 +14,6 @@ export default function Room({ roomId, roomKey }: RoomProps) {
   useAuth();
   const rawMessages = useMessages(roomId, roomKey);
 
-  // Safely handle undefined/null messages
   const messages: Message[] = (rawMessages ?? []).map((msg) => ({
     ...msg,
     content: DOMPurify.sanitize(msg.content, {

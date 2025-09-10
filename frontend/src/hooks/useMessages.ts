@@ -28,6 +28,12 @@ export function useMessages(roomId: string | null, key: string) {
         try {
           const data = JSON.parse(event.data);
 
+          if (data.type === "room_nuked") {
+            alert("This room has been nuked. Chat will be cleared.");
+            setMessages([]);
+            return;
+          }
+
           let newMessages: Message[] = [];
 
           if (data.type === "history" && Array.isArray(data.messages)) {

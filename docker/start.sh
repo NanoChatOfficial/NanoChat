@@ -42,6 +42,10 @@ EOF
 ( cd "$FRONTEND_DIR" && pnpm run preview -- --host 0.0.0.0 --port "$VITE_PORT" ) &
 
 export DJANGO_SETTINGS_MODULE=backend.settings
-daphne backend.asgi:application --port 8000 &
+
+python manage.py makemigrations || true
+python manage.py migrate --noinput
+
+daphne backend.asgi:application --port 8000 --bind 0.0.0.0 &
 
 wait

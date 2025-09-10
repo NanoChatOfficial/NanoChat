@@ -8,14 +8,13 @@ class MessageConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.room = self.scope["url_route"]["kwargs"]["room"]
 
-        if len(self.room) != 16:
+        if len(self.room) != 32:
             await self.close()
             return
 
         self.room_group_name = f"room_{self.room}"
 
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
-
         await self.accept()
 
     async def disconnect(self, close_code):
@@ -39,6 +38,13 @@ class MessageConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             "type": "message",
             "message": event["message"],
+        }))
+
+    async def room_nuked(self, event):
+        await self.send(text_data=json.dumps({
+            "type": "room_nuked",
+            "room": event["room"],
+            "deleted_count": event["deleted_count"],
         }))
 
     @database_sync_to_async

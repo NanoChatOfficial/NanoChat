@@ -1,0 +1,15 @@
+services:
+  nanochat:
+    build:
+      context: .
+      network: host
+    container_name: nanochat
+    network_mode: host
+    volumes:
+      - tor_data:/var/lib/tor/hidden_service
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+
+volumes:
+  tor_data:

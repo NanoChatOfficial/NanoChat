@@ -16,9 +16,7 @@ const ChatBox = ({ roomId, roomKey, className }: ChatBoxProps) => {
     const content = textareaRef.current?.value || "";
     if (content.trim()) {
       await sendMessage(content);
-      if (textareaRef.current) {
-        textareaRef.current.value = "";
-      }
+      if (textareaRef.current) textareaRef.current.value = "";
     }
   };
 
@@ -30,18 +28,23 @@ const ChatBox = ({ roomId, roomKey, className }: ChatBoxProps) => {
   };
 
   return (
-    <div className={className}>
+    <div
+      className={`${className} flex items-center gap-3 p-3 bg-base-100`}
+    >
       <textarea
         ref={textareaRef}
-        className="textarea textarea-ghost focus:outline-none resize-none w-full"
-        placeholder="Send a message..."
+        className="w-full rounded-2xl border border-base-300 bg-base-200 px-4 py-2 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-primary resize-none transition"
+        placeholder="Type your message..."
+        rows={1}
         onKeyDown={handleKeyDown}
       ></textarea>
+
       <button
-        className="bg-blue-400 cursor-pointer flex items-center justify-center rounded-full h-10 w-10"
+        className="flex items-center justify-center rounded-full bg-primary text-white h-11 w-11 transition hover:bg-primary/90 active:scale-95 shadow-md"
         onClick={handleSendMessage}
+        title="Send Message"
       >
-        <BiSolidSend size={16} />
+        <BiSolidSend size={20} />
       </button>
     </div>
   );

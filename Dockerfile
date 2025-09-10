@@ -5,6 +5,7 @@ RUN apk update && apk add --no-cache \
     py3-pip \
     build-base \
     tor \
+    tzdata \
     bash \
     nodejs \
     npm \
@@ -30,6 +31,8 @@ RUN mkdir -p /etc/tor /var/lib/tor/hidden_service && \
     echo "HiddenServiceDir /var/lib/tor/hidden_service/" > /etc/tor/torrc && \
     echo "HiddenServicePort 80 127.0.0.1:4173" >> /etc/tor/torrc && \
     echo "HiddenServicePort 8000 127.0.0.1:8000" >> /etc/tor/torrc
+
+VOLUME ["/var/lib/tor/hidden_service"]
 
 WORKDIR /app/frontend
 
