@@ -29,8 +29,8 @@ export function useMessages(roomId: string | null, key: string) {
           const data = JSON.parse(event.data);
 
           if (data.type === "room_nuked") {
-            alert("This room has been nuked. Chat will be cleared.");
             setMessages([]);
+            alert("This room has been nuked.");
             return;
           }
 
