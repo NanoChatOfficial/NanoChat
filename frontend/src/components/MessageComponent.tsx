@@ -4,39 +4,46 @@ interface MessageComponentProps {
   content: string;
 }
 
-const MessageComponent = ({
-  username,
-  timestamp,
-  content,
-}: MessageComponentProps) => {
+const colors = [
+  "bg-red-500",
+  "bg-green-500",
+  "bg-blue-500",
+  "bg-yellow-500",
+  "bg-purple-500",
+  "bg-pink-500",
+  "bg-indigo-500",
+  "bg-teal-500",
+];
+
+const getColorForUser = (username: string) => {
+  const index = username.charCodeAt(0) % colors.length;
+  return colors[index];
+};
+
+const MessageComponent = ({ username, timestamp, content }: MessageComponentProps) => {
+  const avatarColor = getColorForUser(username);
+  const firstLetter = username.charAt(0).toUpperCase();
+
   return (
-    <>
-      <div className="flex">
-        <div className="relative w-10 h-10 overflow-hidden bg-gray-100 rounded-full dark:bg-gray-600">
-          <svg
-            className="absolute w-12 h-12 text-gray-400 -left-1"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              fillRule="evenodd"
-              d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-              clipRule="evenodd"
-            ></path>
-          </svg>
+    <div className="flex">
+      {/* Avatar with first letter */}
+      <div
+        className={`flex items-center justify-center w-10 h-10 rounded-full text-white font-bold ${avatarColor}`}
+      >
+        {firstLetter}
+      </div>
+
+      {/* Message content */}
+      <div className="ml-3 flex-1">
+        <div className="flex gap-2">
+          <p className="font-bold">{username}</p>
         </div>
-        <div className="ml-3 flex-1">
-          <div className="flex gap-2">
-            <p className="font-bold">{username}</p>
-          </div>
-          <p className="italic text-xs">{timestamp}</p>
-          <div className="mt-2 mb-4">
-            <p>{content}</p>
-          </div>
+        <p className="italic text-xs">{timestamp}</p>
+        <div className="mt-2 mb-4">
+          <p>{content}</p>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
