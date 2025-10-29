@@ -3,8 +3,18 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "your-secret-key"
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() in ("1", "true", "yes")
+
+if not DEBUG:
+    SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+    if not SECRET_KEY:
+        raise RuntimeError(
+            "In production (DEBUG=False) you must set the DJANGO_SECRET_KEY environment variable!"
+        )
+else:
+    SECRET_KEY = secrets.token_urlsafe(50)
+    logging.warning("Generated random SECRET_KEY for development mode.")
+
 APPEND_SLASH = False
 
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
