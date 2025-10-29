@@ -40,6 +40,8 @@ First, clone the repository:
     python3 -m pipenv shell
     pipenv install
     export DJANGO_SETTINGS_MODULE=backend.settings
+    echo "DJANGO_SECRET_KEY=$(head -c 64 /dev/urandom | base64)" >> .env
+    echo "DJANGO_DEBUG=false" >> .env
     daphne backend.asgi:application --port 8000
 
 ### Frontend setup
