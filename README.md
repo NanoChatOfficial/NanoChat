@@ -42,7 +42,7 @@ First, clone the repository:
     export DJANGO_SETTINGS_MODULE=backend.settings
     echo "DJANGO_SECRET_KEY=$(head -c 64 /dev/urandom | base64)" >> .env
     echo "DJANGO_DEBUG=false" >> .env
-    daphne backend.asgi:application --port 8000
+    set -a; source .env; set +a; daphne backend.asgi:application --port 8000
 
 ### Frontend setup
 
